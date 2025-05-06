@@ -1,16 +1,15 @@
 package org.n1vnhil.springframework;
 
+import java.beans.MethodDescriptor;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class ApplicationContext {
 
@@ -19,6 +18,8 @@ public class ApplicationContext {
     }
 
     private Map<String, Object> ioc = new HashMap<>();
+
+    private Map<String, BeanDefinition> beanDefinitionMap = new HashMap<>();
 
     public Object getBean(String name) {
         return this.ioc.get(name);
@@ -39,7 +40,12 @@ public class ApplicationContext {
     }
 
     protected  BeanDefinition wrapper(Class<?> clazz) {
-        return new BeanDefinition(clazz);
+        BeanDefinition beanDefinition = new BeanDefinition(clazz);
+        if(beanDefinitionMap.containsKey(beanDefinition.getName())) {
+            throw new RuntimeException("Bean名称重复");
+        }
+        beanDefinitionMap.put(beanDefinition.getName(), beanDefinition);
+        return beanDefinition;
     }
 
     protected void createBean(BeanDefinition beanDefinition) {
@@ -53,6 +59,8 @@ public class ApplicationContext {
         Object bean = null;
         try {
             bean = constructor.newInstance();
+            Method postConstructMethod = beanDefinition.getPostConstructMethod();
+            if(Objects.nonNull(postConstructMethod)) postConstructMethod.invoke(bean);
         } catch (Exception e) {
             throw new RuntimeException();
         }
