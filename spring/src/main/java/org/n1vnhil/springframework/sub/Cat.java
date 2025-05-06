@@ -12,6 +12,6 @@ public class Cat {
 
     @PostConstruct
     public void init() {
-        System.out.println("Init Cat.");
+        System.out.println("Init Cat with field " + dog);
     }
 }

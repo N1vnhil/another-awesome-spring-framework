@@ -4,6 +4,7 @@ import java.beans.MethodDescriptor;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -22,21 +23,34 @@ public class ApplicationContext {
     private Map<String, BeanDefinition> beanDefinitionMap = new HashMap<>();
 
     public Object getBean(String name) {
-        return this.ioc.get(name);
+        if(Objects.isNull(name) || name.isEmpty()) return null;
+        Object bean = this.ioc.get(name);
+        if(Objects.nonNull(bean)) return bean;
+        if(beanDefinitionMap.containsKey(name)) return doCreateBean(beanDefinitionMap.get(name));
+        return null;
     }
 
     public <T> T getBean(Class<T> beanType) {
-        return this.ioc.values().stream().filter(bean -> beanType.isAssignableFrom(bean.getClass()))
-                .map(bean -> (T) bean).findAny().orElse(null);
+        String beanName = this.beanDefinitionMap.values().stream()
+                .filter(bd -> beanType.isAssignableFrom(bd.getBeanType()))
+                .map(BeanDefinition::getName)
+                .findFirst()
+                .orElse(null);
+        return (T) getBean(beanName);
     }
 
     public <T> List<T> getBeans(Class<T> beanType) {
-        return this.ioc.values().stream().filter(bean -> beanType.isAssignableFrom(bean.getClass()))
-                .map(bean -> (T) bean).toList();
+        return this.beanDefinitionMap.values().stream()
+                .filter(bd -> beanType.isAssignableFrom(bd.getBeanType()))
+                .map(BeanDefinition::getName)
+                .map(this::getBean)
+                .map(m -> (T) m)
+                .toList();
     }
 
     public void initContext(String packageName) throws IOException, URISyntaxException {
-        scanPackage(packageName).stream().filter(this::scanCreate).map(this::wrapper).forEach(this::createBean);
+        scanPackage(packageName).stream().filter(this::scanCreate).forEach(this::wrapper);
+        beanDefinitionMap.values().forEach(this::createBean);
     }
 
     protected  BeanDefinition wrapper(Class<?> clazz) {
@@ -54,17 +68,19 @@ public class ApplicationContext {
         doCreateBean(beanDefinition);
     }
 
-    private void doCreateBean(BeanDefinition beanDefinition) {
+    private Object doCreateBean(BeanDefinition beanDefinition) {
         Constructor<?> constructor = beanDefinition.getConstructor();
         Object bean = null;
         try {
             bean = constructor.newInstance();
+            autowiredBean(bean, beanDefinition);
             Method postConstructMethod = beanDefinition.getPostConstructMethod();
             if(Objects.nonNull(postConstructMethod)) postConstructMethod.invoke(bean);
+            ioc.put(beanDefinition.getName(), bean);
         } catch (Exception e) {
-            throw new RuntimeException();
+            throw new RuntimeException(e);
         }
-        ioc.put(beanDefinition.getName(), bean);
+        return bean;
     }
 
     protected boolean scanCreate(Class<?> clazz) {
@@ -95,4 +111,10 @@ public class ApplicationContext {
         return classList;
     }
 
+    private void autowiredBean(Object bean, BeanDefinition beanDefinition) throws IllegalAccessException {
+        for(Field autowiredField: beanDefinition.getAutowiredFields()) {
+            autowiredField.setAccessible(true);
+            autowiredField.set(bean, getBean(autowiredField.getType()));
+        }
+    }
 }

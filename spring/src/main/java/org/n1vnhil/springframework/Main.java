@@ -10,9 +10,6 @@ public class Main {
     public static void main(String[] args) throws IOException, URISyntaxException {
         ApplicationContext ioc = new ApplicationContext("org.n1vnhil.springframework");
         Object cat = ioc.getBean("Cat");
-        Object dog = ioc.getBean(Dog.class);
-        System.out.println(cat);
-        System.out.println(dog);
     }
 
 }
