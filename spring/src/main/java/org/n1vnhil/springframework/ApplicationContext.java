@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -24,6 +25,8 @@ public class ApplicationContext {
     private Map<String, Object> loadingIoc = new HashMap<>();
 
     private Map<String, BeanDefinition> beanDefinitionMap = new HashMap<>();
+
+    private List<BeanPostProcessor> postProcessors = new ArrayList<>();
 
     public Object getBean(String name) {
         if(Objects.isNull(name) || name.isEmpty()) return null;
@@ -53,7 +56,16 @@ public class ApplicationContext {
 
     public void initContext(String packageName) throws IOException, URISyntaxException {
         scanPackage(packageName).stream().filter(this::scanCreate).forEach(this::wrapper);
+        initBeanPostProcessor();
         beanDefinitionMap.values().forEach(this::createBean);
+    }
+
+    private void initBeanPostProcessor() {
+        beanDefinitionMap.values().stream()
+                .filter(bd -> BeanPostProcessor.class.isAssignableFrom(bd.getBeanType()))
+                .map(this::createBean)
+                .map(bean -> (BeanPostProcessor) bean)
+                .forEach(postProcessors::add);
     }
 
     protected  BeanDefinition wrapper(Class<?> clazz) {
@@ -79,9 +91,9 @@ public class ApplicationContext {
             bean = constructor.newInstance();
             loadingIoc.put(beanDefinition.getName(), bean);
             autowiredBean(bean, beanDefinition);
-            Method postConstructMethod = beanDefinition.getPostConstructMethod();
-            if(Objects.nonNull(postConstructMethod)) postConstructMethod.invoke(bean);
-            ioc.put(beanDefinition.getName(), loadingIoc.remove(beanDefinition.getName()));
+            bean = initializeBean(bean, beanDefinition);
+            loadingIoc.remove(beanDefinition.getName());
+            ioc.put(beanDefinition.getName(), bean);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
@@ -121,5 +133,20 @@ public class ApplicationContext {
             autowiredField.setAccessible(true);
             autowiredField.set(bean, getBean(autowiredField.getType()));
         }
+    }
+
+    private Object initializeBean(Object bean, BeanDefinition beanDefinition) throws InvocationTargetException, IllegalAccessException {
+        for(BeanPostProcessor postProcessor: postProcessors) {
+            bean = postProcessor.beforeInitializeBean(bean, beanDefinition.getName());
+        }
+
+        Method postConstructMethod = beanDefinition.getPostConstructMethod();
+        if(Objects.nonNull(postConstructMethod)) postConstructMethod.invoke(bean);
+
+        for(BeanPostProcessor postProcessor: postProcessors) {
+            bean = postProcessor.afterInitializeBean(bean, beanDefinition.getName());
+        }
+
+        return bean;
     }
 }
