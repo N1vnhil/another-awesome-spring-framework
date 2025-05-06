@@ -3,6 +3,7 @@ package org.n1vnhil.springframework;
 import java.beans.MethodDescriptor;
 import java.io.File;
 import java.io.IOException;
+import java.io.StringReader;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
@@ -20,13 +21,15 @@ public class ApplicationContext {
 
     private Map<String, Object> ioc = new HashMap<>();
 
+    private Map<String, Object> loadingIoc = new HashMap<>();
+
     private Map<String, BeanDefinition> beanDefinitionMap = new HashMap<>();
 
     public Object getBean(String name) {
         if(Objects.isNull(name) || name.isEmpty()) return null;
         Object bean = this.ioc.get(name);
         if(Objects.nonNull(bean)) return bean;
-        if(beanDefinitionMap.containsKey(name)) return doCreateBean(beanDefinitionMap.get(name));
+        if(beanDefinitionMap.containsKey(name)) return createBean(beanDefinitionMap.get(name));
         return null;
     }
 
@@ -62,10 +65,11 @@ public class ApplicationContext {
         return beanDefinition;
     }
 
-    protected void createBean(BeanDefinition beanDefinition) {
+    protected Object createBean(BeanDefinition beanDefinition) {
         String name = beanDefinition.getName();
-        if(ioc.containsKey(name)) return;
-        doCreateBean(beanDefinition);
+        if(ioc.containsKey(name)) return ioc.get(name);
+        if(loadingIoc.containsKey(name)) return loadingIoc.get(name);
+        return doCreateBean(beanDefinition);
     }
 
     private Object doCreateBean(BeanDefinition beanDefinition) {
@@ -73,10 +77,11 @@ public class ApplicationContext {
         Object bean = null;
         try {
             bean = constructor.newInstance();
+            loadingIoc.put(beanDefinition.getName(), bean);
             autowiredBean(bean, beanDefinition);
             Method postConstructMethod = beanDefinition.getPostConstructMethod();
             if(Objects.nonNull(postConstructMethod)) postConstructMethod.invoke(bean);
-            ioc.put(beanDefinition.getName(), bean);
+            ioc.put(beanDefinition.getName(), loadingIoc.remove(beanDefinition.getName()));
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
