@@ -18,6 +18,7 @@ public class WebHandler {
 
     private ResultType resolveResultType(Object controllerBean, Method method) {
         if(method.isAnnotationPresent(ResponseBody.class)) return ResultType.JSON;
+        if(method.getReturnType() == ModelAndView.class) return ResultType.LOCAL;
         return ResultType.HTML;
     }
 
